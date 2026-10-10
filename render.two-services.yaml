@@ -18,7 +18,7 @@ services:
     plan: starter
     region: frankfurt
     rootDir: .
-    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/api
+    buildCommand: npm ci --include=dev && npm run build:shared && npm run build -w @wassouf/api
     startCommand: node apps/api/dist/main.js
     healthCheckPath: /api/products
     # Persistent storage for uploaded product images.
@@ -58,7 +58,7 @@ services:
     plan: starter
     region: frankfurt
     rootDir: .
-    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/web
+    buildCommand: npm ci --include=dev && npm run build:shared && npm run build -w @wassouf/web
     startCommand: npm start -w @wassouf/web -- -H 0.0.0.0
     envVars:
       - key: NODE_ENV

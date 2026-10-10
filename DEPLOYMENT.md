@@ -81,7 +81,7 @@ Why one service: one thing to pay for, one public URL, no CORS, and `API_BASE_UR
 | Setting | Value |
 | --- | --- |
 | Root Directory | *(repo root — leave empty)* |
-| Build Command | `npm ci && npm run build:shared && npm run build -w @wassouf/api && npm run build -w @wassouf/web` |
+| Build Command | `npm ci --include=dev && npm run build:shared && npm run build -w @wassouf/api && npm run build -w @wassouf/web` |
 | Start Command | `bash scripts/start-all.sh` |
 | Health Check Path | `/` |
 
@@ -133,7 +133,7 @@ A `render.two-services.yaml` blueprint is included as a starting point (rename i
 | --- | --- |
 | Type | Web Service (Node) |
 | Root Directory | *(repo root — leave empty)* |
-| Build Command | `npm ci && npm run build:shared && npm run build -w @wassouf/web` |
+| Build Command | `npm ci --include=dev && npm run build:shared && npm run build -w @wassouf/web` |
 | Start Command | `npm start -w @wassouf/web -- -H 0.0.0.0` |
 | Env var `API_BASE_URL` | `https://al-wassouf-api.onrender.com` |
 | Env var `NEXT_PUBLIC_SITE_URL` | `https://al-wassouf-web.onrender.com` |
@@ -143,7 +143,7 @@ A `render.two-services.yaml` blueprint is included as a starting point (rename i
 | Setting | Value |
 | --- | --- |
 | Root Directory | *(repo root)* |
-| Build Command | `npm ci && npm run build:shared && npm run build -w @wassouf/api` |
+| Build Command | `npm ci --include=dev && npm run build:shared && npm run build -w @wassouf/api` |
 | Start Command | `node apps/api/dist/main.js` |
 | Health Check Path | `/api/products` |
 
@@ -237,7 +237,7 @@ For **Cloudflare Workers Builds** (CI), set:
 - **Root directory:** repository root
 - **Build command:**
   ```bash
-  npm ci && npm run build:shared && npm run deploy -w @wassouf/web
+  npm ci --include=dev && npm run build:shared && npm run deploy -w @wassouf/web
   ```
 
 ### 3.6 Environment variables (Cloudflare → Settings → Variables and Secrets)

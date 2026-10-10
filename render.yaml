@@ -20,7 +20,7 @@ services:
     plan: starter
     region: frankfurt
     rootDir: .
-    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/api && npm run build -w @wassouf/web
+    buildCommand: npm ci --include=dev && npm run build:shared && npm run build -w @wassouf/api && npm run build -w @wassouf/web
     startCommand: bash scripts/start-all.sh
     healthCheckPath: /
     # Persistent storage for uploaded product images.
