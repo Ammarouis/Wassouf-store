@@ -1,6 +1,6 @@
-# Deployment guide — Cloudflare + API + MongoDB Atlas
+# Deployment guide — Render (web + API) or Cloudflare + MongoDB Atlas
 
-> ملخص عربي سريع: تطبيق الويب يمكن استضافته على Cloudflare (Workers)، لكن **خدمة الـ API (NestJS) لا يمكن تشغيلها على Cloudflare إطلاقًا** لأنها تستخدم `sharp` وموديلات أصلية، ويجب استضافتها على خدمة Node مثل Render/Railway/Fly/VPS. قاعدة البيانات تبقى على MongoDB Atlas، ونضع IP سيرفر الـ API فقط في قائمة السماح — **لا نضع IP الخاص بـ Cloudflare**.
+> ملخص عربي سريع: **الأسهل هو نشر الويب والـ API معًا على Render** (راجع §2 و §2b وملف `render.yaml`). الـ API (NestJS) لا يمكن تشغيله على Cloudflare إطلاقًا لأنه يستخدم `sharp` وموديلات أصلية. تطبيق الويب يمكن نشره على Cloudflare **Workers** (وليس Pages لأنها تدعم المواقع الثابتة فقط). قاعدة البيانات تبقى على MongoDB Atlas، ونضع IP سيرفر الـ API فقط في قائمة السماح — **لا نضع IP الخاص بـ Cloudflare**.
 
 ---
 
@@ -10,13 +10,13 @@ This repository is a **monorepo with three parts**, and they do **not** all live
 
 | Part | What it is | Where it can run |
 | --- | --- | --- |
-| `apps/web` | Next.js 15 (SSR + server components) | Cloudflare Workers ✅ / any Node host ✅ |
+| `apps/web` | Next.js 15 (SSR + server components) | **Render ✅** / Cloudflare Workers ✅ / any Node host ✅ |
 | `apps/api` | NestJS + Mongoose + **`sharp`** | **Node host only** — Render / Railway / Fly.io / VPS |
 | MongoDB | Atlas cluster (remote) | Atlas (managed) |
 
 ### ⚠️ Two things that will bite you
 
-1. **Cloudflare _Pages_ cannot host this app.** Cloudflare Pages only supports Next.js as a **static export** (`output: 'export'`). This app uses server-side data fetching (`getProducts`, `getBrands`…) and a server-side `/api` proxy, so it is **not** static. Use **Cloudflare Workers** instead (see §3).
+1. **Cloudflare _Pages_ cannot host this app.** Cloudflare Pages only supports Next.js as a **static export** (`output: 'export'`). This app uses server-side data fetching (`getProducts`, `getBrands`…) and a server-side `/api` proxy, so it is **not** static. Use **Render** (see §2b) or **Cloudflare Workers** (see §3).
 2. **The API cannot run on Cloudflare at all.** `apps/api` depends on `sharp` (a native binary) and a long-running NestJS/Express server. Cloudflare Workers have no native modules and no long-running process. The API **must** go on a Node host.
 
 > If you truly want everything on Cloudflare, the API would have to be rewritten to use the MongoDB **Atlas Data API** (HTTPS) instead of Mongoose. That is a large rewrite — not recommended.
@@ -112,7 +112,50 @@ Run it from a Render **Shell** (or locally with `MONGODB_URI` pointing at Atlas)
 
 ---
 
-## 3. Deploy the web app to Cloudflare Workers
+## 2b. Option A — put the web app on Render too (simplest)
+
+You do **not** need Cloudflare at all. Render can host both services, which avoids the Cloudflare Pages/Workers limitation entirely.
+
+### Use the included blueprint
+
+A ready-made `render.yaml` is included in this folder. In Render: **New → Blueprint → select this repo**. It creates both services with the build/start commands already set.
+
+### Or create the web service manually
+
+| Setting | Value |
+| --- | --- |
+| Type | Web Service (Node) |
+| Root Directory | *(repo root — leave empty)* |
+| Build Command | `npm ci && npm run build:shared && npm run build -w @wassouf/web` |
+| Start Command | `npm start -w @wassouf/web -- -H 0.0.0.0` |
+| Env var `API_BASE_URL` | `https://al-wassouf-api.onrender.com` |
+| Env var `NEXT_PUBLIC_SITE_URL` | `https://al-wassouf-web.onrender.com` |
+
+`next start` automatically uses the `PORT` Render injects, so do **not** set `PORT`.
+
+### How the two services talk
+
+```
+Browser ──► WEB  (Next.js SSR)  ──► API (NestJS) ──► MongoDB Atlas
+             apps/web                apps/api
+```
+
+- Server-rendered pages fetch `${API_BASE_URL}/api/...` **directly, server-to-server**.
+- The browser's calls to `/api/*` are proxied by `next.config.ts` to `API_BASE_URL`.
+- Because the proxy is server-side, normal usage is **not** subject to CORS — but still set the API's `CORS_ORIGINS` to the web URL for safety.
+
+### Render gotchas
+
+- **Set `API_BASE_URL` on the web service *before* the first deploy.** If it is missing, the web falls back to `http://localhost:4000` and every page will fail.
+- **`NEXT_PUBLIC_*` values are baked in at build time.** Changing `NEXT_PUBLIC_SITE_URL` later requires a **manual redeploy** (`Clear build cache & deploy`).
+- **Free tier spins down** after ~15 min idle → the first request after a pause is slow (cold start), for both services.
+- **Persistent disks need a paid instance.** On free tier, uploaded images disappear on every restart. Options: use a paid instance with the `disk` block from `render.yaml`, or move media to Cloudflare R2 / S3 later.
+- **Deploy the API first**, so `API_BASE_URL` is valid when the web builds.
+- Optional: add a Cloudflare custom domain in front for CDN/DNS — but the app itself needs nothing from Cloudflare.
+
+---
+
+## 3. Option B — put the web app on Cloudflare Workers
 
 Cloudflare's **Pages** product is for static sites only, so for this SSR app you deploy a **Worker** using the **OpenNext adapter**.
 
