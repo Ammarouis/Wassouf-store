@@ -59,26 +59,33 @@ apps/api/uploads/
 
 ---
 
-## 2. Deploy the API (NestJS) — Render example
+## 2. Option A — ONE Render service for both (recommended)
 
-Any Node 20+ host works. Render is the simplest.
+Both the API and the web app run inside a single service:
+
+```
+public  $PORT            -> Next.js  (apps/web)
+loopback 127.0.0.1:4000  -> NestJS   (apps/api)
+```
+
+`next start` takes Render's public `PORT`, while the API is pinned to an internal loopback port. `scripts/start-all.sh` starts both and waits for the API before booting the web app. `render.yaml` already points at it.
+
+Why one service: one thing to pay for, one public URL, no CORS, and `API_BASE_URL` is a fixed internal value — so there is **no manual wiring step**.
 
 ### 2.1 Create the service
 
-1. Render dashboard → **New → Web Service** → connect your GitHub repo.
-2. Settings:
-   - **Root Directory:** *(leave empty — the monorepo root)*
-   - **Build Command:**
-     ```bash
-     npm ci && npm run build:shared && npm run build -w @wassouf/api
-     ```
-   - **Start Command:**
-     ```bash
-     node apps/api/dist/main.js
-     ```
-   - **Health check path:** `/api/products` (or leave default)
+**Blueprint (easiest):** Render → **New → Blueprint** → select this repo. Then fill in the `sync: false` values listed in §5.
 
-> ℹ️ `@wassouf/shared` builds to `dist/`, so `npm run build:shared` must run before the API build.
+**Manual:** Render → **New → Web Service**, then:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | *(repo root — leave empty)* |
+| Build Command | `npm ci && npm run build:shared && npm run build -w @wassouf/api && npm run build -w @wassouf/web` |
+| Start Command | `bash scripts/start-all.sh` |
+| Health Check Path | `/` |
+
+> ℹ️ `@wassouf/shared` builds to `dist/`, so `npm run build:shared` must run before the app builds.
 
 ### 2.2 Environment variables (Render → Environment)
 
@@ -87,13 +94,15 @@ Any Node 20+ host works. Render is the simplest.
 | `NODE_ENV` | `production` |
 | `MONGODB_URI` | `mongodb+srv://…` (your Atlas string) |
 | `SESSION_SECRET` | a long random string (`openssl rand -hex 32`) |
-| `CORS_ORIGINS` | `https://your-web-domain` (comma-separated) |
+| `CORS_ORIGINS` | your public URL (comma-separated) |
 | `MEDIA_DIR` | `/var/data/uploads` (see note below) |
+| `API_BASE_URL` | `http://127.0.0.1:4000` — fixed, same service |
+| `NEXT_PUBLIC_SITE_URL` | the public URL Render assigns (baked in at build time) |
 | `DEFAULT_WHATSAPP_COUNTRY_CODE` | e.g. `963` |
 | `BR_01_WHATSAPP_LOCAL`, `BR_01_WHATSAPP_COUNTRY_CODE` | branch WhatsApp numbers |
 | `BR_02_WHATSAPP_LOCAL`, `BR_02_WHATSAPP_COUNTRY_CODE` | branch WhatsApp numbers |
 
-Do **not** set `PORT` — hosts inject their own and the code reads `process.env.PORT`.
+Do **not** set `PORT` — Render injects it, and `scripts/start-all.sh` derives the API's internal port separately.
 
 ### 2.3 Persistent media (uploads)
 
@@ -112,15 +121,13 @@ Run it from a Render **Shell** (or locally with `MONGODB_URI` pointing at Atlas)
 
 ---
 
-## 2b. Option A — put the web app on Render too (simplest)
+## 2b. Option B — two separate services (stronger isolation)
 
-You do **not** need Cloudflare at all. Render can host both services, which avoids the Cloudflare Pages/Workers limitation entirely.
+If you would rather scale and redeploy the API and web independently, use two services instead of one. Trade-offs vs. Option A: two services to pay for, two URLs, and `API_BASE_URL` must be wired manually.
 
-### Use the included blueprint
+A `render.two-services.yaml` blueprint is included as a starting point (rename it to `render.yaml` to use it).
 
-A ready-made `render.yaml` is included in this folder. In Render: **New → Blueprint → select this repo**. It creates both services with the build/start commands already set.
-
-### Or create the web service manually
+### Web service settings
 
 | Setting | Value |
 | --- | --- |
@@ -130,6 +137,15 @@ A ready-made `render.yaml` is included in this folder. In Render: **New → Blue
 | Start Command | `npm start -w @wassouf/web -- -H 0.0.0.0` |
 | Env var `API_BASE_URL` | `https://al-wassouf-api.onrender.com` |
 | Env var `NEXT_PUBLIC_SITE_URL` | `https://al-wassouf-web.onrender.com` |
+
+### API service settings
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | *(repo root)* |
+| Build Command | `npm ci && npm run build:shared && npm run build -w @wassouf/api` |
+| Start Command | `node apps/api/dist/main.js` |
+| Health Check Path | `/api/products` |
 
 `next start` automatically uses the `PORT` Render injects, so do **not** set `PORT`.
 
@@ -144,18 +160,18 @@ Browser ──► WEB  (Next.js SSR)  ──► API (NestJS) ──► MongoDB A
 - The browser's calls to `/api/*` are proxied by `next.config.ts` to `API_BASE_URL`.
 - Because the proxy is server-side, normal usage is **not** subject to CORS — but still set the API's `CORS_ORIGINS` to the web URL for safety.
 
-### Render gotchas
+### Render gotchas (both options)
 
-- **Set `API_BASE_URL` on the web service *before* the first deploy.** If it is missing, the web falls back to `http://localhost:4000` and every page will fail.
+- **Two-service only: set `API_BASE_URL` on the web service *before* the first deploy.** If it is missing, the web falls back to `http://localhost:4000` and every page will fail.
 - **`NEXT_PUBLIC_*` values are baked in at build time.** Changing `NEXT_PUBLIC_SITE_URL` later requires a **manual redeploy** (`Clear build cache & deploy`).
-- **Free tier spins down** after ~15 min idle → the first request after a pause is slow (cold start), for both services.
-- **Persistent disks need a paid instance.** On free tier, uploaded images disappear on every restart. Options: use a paid instance with the `disk` block from `render.yaml`, or move media to Cloudflare R2 / S3 later.
-- **Deploy the API first**, so `API_BASE_URL` is valid when the web builds.
+- **Free tier spins down** after ~15 min idle → the first request after a pause is slow (cold start).
+- **Persistent disks need a paid instance.** On free tier, uploaded images disappear on every restart. Use a paid instance with the `disk` block, or move media to Cloudflare R2 / S3.
+- **Two-service only: deploy the API first**, so `API_BASE_URL` is valid when the web builds.
 - Optional: add a Cloudflare custom domain in front for CDN/DNS — but the app itself needs nothing from Cloudflare.
 
 ---
 
-## 3. Option B — put the web app on Cloudflare Workers
+## 3. Option C — put the web app on Cloudflare Workers
 
 Cloudflare's **Pages** product is for static sites only, so for this SSR app you deploy a **Worker** using the **OpenNext adapter**.
 
@@ -318,12 +334,32 @@ This only affects your home network. A cloud API host (Render/Railway/Fly) has n
 
 ## 6. Post-deploy checklist
 
-- [ ] API reachable: `curl https://your-api.example.com/api/products`
-- [ ] Worker reachable: open `https://shop.example.com`
+- [ ] API reachable: `curl https://<your-app>/api/products`
+- [ ] Site reachable: open the public URL
 - [ ] `/admin` loads and **login works** (proves the `/api` proxy → API → Atlas chain)
-- [ ] Atlas allowlist contains the API host IP (not Cloudflare)
+- [ ] Atlas allowlist contains the host's IP (not Cloudflare's)
 - [ ] `CORS_ORIGINS` contains the real web origin
 - [ ] `NEXT_PUBLIC_SITE_URL` / `API_BASE_URL` point at production URLs
 - [ ] Media uses a persistent disk or object storage
 - [ ] `SESSION_SECRET` and passwords rotated after any `.env` commit
 - [ ] `0.0.0.0/0` removed from Atlas if you used it temporarily
+
+---
+
+## 7. Troubleshooting
+
+| Symptom | Cause / fix |
+| --- | --- |
+| `Failed to proxy http://localhost:4000/api/... ECONNREFUSED` | The API isn't running on :4000. Check the API process/logs, and that `API_BASE_URL` is set. |
+| API exits with `Cannot read properties of undefined (reading 'resolve')` | `esModuleInterop` is missing from `apps/api/tsconfig.json`. Default imports (`sharp`, `path`, `multer`) then compile to `.default` and crash. Keep `"esModuleInterop": true`. |
+| `Cannot find module '/app/apps/api/dist/main.js'` | The API output path moved. `apps/api/tsconfig.json` maps `@wassouf/shared` to `../../packages/shared/dist/index.d.ts`. If it points at the shared **`.ts` source** instead, TypeScript widens `rootDir` and emits `dist/apps/api/src/main.js`. Keep the `.d.ts` mapping so the entry stays `dist/main.js`. |
+| Build fails with `Cannot find module .../packages/shared/dist/index.d.ts` | `npm run build:shared` must run **before** the API build — it is included in the build commands above. |
+| Mongo timeouts / `MongooseServerSelectionError` | The host's IP isn't allowed in Atlas, or the local network blocks port 27017 (see §4.2). Locally use a VPN or the bundled `docker-compose.yml`. |
+| Uploaded images vanish after a restart | The host filesystem is ephemeral. Attach a persistent disk and set `MEDIA_DIR`, or move to object storage. |
+| `NEXT_PUBLIC_SITE_URL` change has no effect | `NEXT_PUBLIC_*` is baked in at build time — redeploy with a cleared build cache. |
+
+### Verified facts used above
+
+- `next start` **does** honour the `PORT` environment variable and the `-H 0.0.0.0` flag.
+- `apps/api` builds to `apps/api/dist/main.js` and starts with `node apps/api/dist/main.js`.
+- With both processes in one service, the layout is `public $PORT` → web and `127.0.0.1:4000` → API.

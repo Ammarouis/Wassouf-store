@@ -6,6 +6,7 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
@@ -18,7 +19,7 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
-      "@wassouf/shared": ["../../packages/shared/src/index.ts"]
+      "@wassouf/shared": ["../../packages/shared/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"]

@@ -1,28 +1,30 @@
-# Render Blueprint — deploys BOTH the API and the web app.
+# Render Blueprint — ONE service running both the API and the web app.
 #
 # How to use:
 #   1. Push this repo to GitHub.
 #   2. Render dashboard → New → Blueprint → pick this repo.
-#   3. Render reads this file and creates both services.
-#   4. Fill in the values marked `sync: false` in each service's Environment tab.
+#   3. Fill in the values marked `sync: false` in the service's Environment tab.
 #
-# Note: `next start` picks up the PORT variable that Render injects.
+# Inside the instance:
+#   public  $PORT            -> Next.js (apps/web)          via scripts/start-all.sh
+#   loopback 127.0.0.1:4000  -> NestJS  (apps/api)
+#
+# Why one service: Render's free/cheap tiers bill per service, and a single
+# service avoids CORS and a second public URL entirely. See DEPLOYMENT.md §2b
+# for the two-service alternative if you prefer stronger isolation.
 
 services:
-  # ────────────────────────────────────────────────────────────────
-  # API — NestJS + Mongoose + sharp (Node only, never Cloudflare)
-  # ────────────────────────────────────────────────────────────────
   - type: web
-    name: al-wassouf-api
+    name: al-wassouf
     runtime: node
     plan: starter
     region: frankfurt
     rootDir: .
-    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/api
-    startCommand: node apps/api/dist/main.js
-    healthCheckPath: /api/products
+    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/api && npm run build -w @wassouf/web
+    startCommand: bash scripts/start-all.sh
+    healthCheckPath: /
     # Persistent storage for uploaded product images.
-    # Disks require a paid instance type (starter+); remove this block on free tier.
+    # Disks require a paid instance type (starter+); drop this block on free tier.
     disk:
       name: wassouf-media
       mountPath: /var/data
@@ -32,6 +34,14 @@ services:
         value: production
       - key: MEDIA_DIR
         value: /var/data/uploads
+      # Fixed internal URL — the web proxies to the in-instance API.
+      # No manual step needed, unlike the two-service setup.
+      - key: API_BASE_URL
+        value: http://127.0.0.1:4000
+      # Set this to the public URL Render assigns (or your custom domain),
+      # then redeploy so it is baked into the build.
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
       - key: MONGODB_URI
         sync: false
       - key: SESSION_SECRET
@@ -47,25 +57,4 @@ services:
       - key: BR_02_WHATSAPP_LOCAL
         sync: false
       - key: BR_02_WHATSAPP_COUNTRY_CODE
-        sync: false
-
-  # ────────────────────────────────────────────────────────────────
-  # Web — Next.js 15 (SSR). Talks to the API above over HTTPS.
-  # ────────────────────────────────────────────────────────────────
-  - type: web
-    name: al-wassouf-web
-    runtime: node
-    plan: starter
-    region: frankfurt
-    rootDir: .
-    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/web
-    startCommand: npm start -w @wassouf/web -- -H 0.0.0.0
-    envVars:
-      - key: NODE_ENV
-        value: production
-      # Server-side data fetching + the /api proxy both use this.
-      - key: API_BASE_URL
-        sync: false
-      # Baked into the build (metadataBase); set BEFORE the first build.
-      - key: NEXT_PUBLIC_SITE_URL
         sync: false

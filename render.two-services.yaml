@@ -1,0 +1,71 @@
+# Render Blueprint — deploys BOTH the API and the web app.
+#
+# How to use:
+#   1. Push this repo to GitHub.
+#   2. Render dashboard → New → Blueprint → pick this repo.
+#   3. Render reads this file and creates both services.
+#   4. Fill in the values marked `sync: false` in each service's Environment tab.
+#
+# Note: `next start` picks up the PORT variable that Render injects.
+
+services:
+  # ────────────────────────────────────────────────────────────────
+  # API — NestJS + Mongoose + sharp (Node only, never Cloudflare)
+  # ────────────────────────────────────────────────────────────────
+  - type: web
+    name: al-wassouf-api
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: .
+    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/api
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/products
+    # Persistent storage for uploaded product images.
+    # Disks require a paid instance type (starter+); remove this block on free tier.
+    disk:
+      name: wassouf-media
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MEDIA_DIR
+        value: /var/data/uploads
+      - key: MONGODB_URI
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DEFAULT_WHATSAPP_COUNTRY_CODE
+        value: "963"
+      - key: BR_01_WHATSAPP_LOCAL
+        sync: false
+      - key: BR_01_WHATSAPP_COUNTRY_CODE
+        sync: false
+      - key: BR_02_WHATSAPP_LOCAL
+        sync: false
+      - key: BR_02_WHATSAPP_COUNTRY_CODE
+        sync: false
+
+  # ────────────────────────────────────────────────────────────────
+  # Web — Next.js 15 (SSR). Talks to the API above over HTTPS.
+  # ────────────────────────────────────────────────────────────────
+  - type: web
+    name: al-wassouf-web
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: .
+    buildCommand: npm ci && npm run build:shared && npm run build -w @wassouf/web
+    startCommand: npm start -w @wassouf/web -- -H 0.0.0.0
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Server-side data fetching + the /api proxy both use this.
+      - key: API_BASE_URL
+        sync: false
+      # Baked into the build (metadataBase); set BEFORE the first build.
+      - key: NEXT_PUBLIC_SITE_URL
+        sync: false
