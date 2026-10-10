@@ -1,0 +1,16 @@
+{
+  "name": "al-wassouf",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "build:shared": "npm run build -w @wassouf/shared",
+    "dev:api": "npm run start:dev -w @wassouf/api",
+    "dev:web": "npm run dev -w @wassouf/web",
+    "test": "npm run test -w @wassouf/shared -w @wassouf/api -w @wassouf/web --if-present",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "seed": "npm run seed -w @wassouf/api",
+    "migrate:legacy-media": "npm run migrate:legacy-media -w @wassouf/api"
+  },
+  "engines": { "node": ">=20" }
+}
