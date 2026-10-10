@@ -6,10 +6,11 @@ import {
   SearchQuery,
   PublicOffer,
 } from '@wassouf/shared';
+import { withScheme } from './site';
 
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') return '';
-  return process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+  return withScheme(process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL) || 'http://localhost:4000';
 };
 
 const DEFAULT_SETTINGS: PublicSettings = {
